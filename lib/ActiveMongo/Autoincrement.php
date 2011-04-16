@@ -35,20 +35,37 @@
   +---------------------------------------------------------------------------------+
 */
 
-namespace ActiveMongo;
-
-// Class FilterException {{{
-class Exception extends \Exception
+final class AutoIncrement_Namespace extends ActiveMongo
 {
+    public $class;
+    public $last;
+
+    function setup()
+    {
+        $this->addIndex('class', array('unique' => TRUE));
+    }
+
+    public static function getAutoIncrement($class, &$obj) {
+        if (isset_static_variable($class, 'autoincrementID')) {
+            $counter    = new AutoIncrement_Namespace;
+            $counter->where('class', $class);
+            $counter->limit(1);
+            $counter->findAndModify(array('$inc' => array('last' => 1)), array('upsert' => true, 'new' => true));
+    
+            if (!$counter->Valid()) {
+                throw new Exception("Unexpected error");
+            } else {
+                $counter->current();
+            }
+    
+            $obj['_id'] = $counter->last;
+        }
+    }
 }
-// }}}
 
+ActiveMongo::addEvent('before_create', array('AutoIncrement_Namespace', 'getAutoIncrement'));
 
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: sw=4 ts=4 fdm=marker
- * vim<600: sw=4 ts=4
- */
+abstract class ActiveMongo_Autoincrement extends ActiveMongo
+{
+    static public $autoincrementID = true;
+}

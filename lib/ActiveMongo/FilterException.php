@@ -38,7 +38,14 @@
 namespace ActiveMongo;
 
 // Class FilterException {{{
-class Exception extends \Exception
+/**
+ *  FilterException
+ *
+ *  This is Exception is thrown if any validation
+ *  fails when save() is called.
+ *
+ */
+class FilterException extends \Exception 
 {
 }
 // }}}

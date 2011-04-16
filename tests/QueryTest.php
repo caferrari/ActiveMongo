@@ -7,16 +7,19 @@ class QueryTest extends PHPUnit_Framework_TestCase
     {
         ActiveMongo::connect(DB, "localhost");
         try {
-            Dummy::drop();
+            Dummy::instance()->drop();
         } catch (ActiveMongo_Exception $e) {}
         try {
-            Model1::drop();
+            Model1::instance()->drop();
         } catch (ActiveMongo_Exception $e) {}
         try {
-            Model2::drop();
+            Model2::instance()->drop();
         } catch (ActiveMongo_Exception $e) {}
         try {
-            Model3::drop();
+            Model3::instance()->drop();
+        } catch (ActiveMongo_Exception $e) {}
+        try {
+            AutoIncrement_Model::instance()->drop();
         } catch (ActiveMongo_Exception $e) {}
         $this->assertTrue(TRUE);
     }
@@ -24,7 +27,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
     function testBulkInserts()
     {
         try { 
-            Model3::drop();
+            Model3::instance()->drop();
         } catch (ActiveMongo_Exception $e) {}
         $data = array();
 
@@ -39,12 +42,31 @@ class QueryTest extends PHPUnit_Framework_TestCase
         $data[] = array('xint' => $i, 'str' => sha1(uniqid()));
 
         /* batchInsert */
-        Model3::batchInsert($data, TRUE, TRUE);
+        Model3::instance()->batchInsert($data, TRUE, TRUE);
 
-        $c = new Model3;
+        $c = Model3::instance();
+
+        $i = 0;
+        foreach ($c as $d) {
+            $this->assertEquals($i++, $d->int);
+        }
+
+        $this->assertEquals($i, 5000);
         $this->assertEquals($c->count(), 5000);
     }
 
+    function testOneResult()
+    {
+        $c = new Model3;
+        $c->limit(1);
+
+        $i = 0;
+        foreach ($c as $r) {
+            $i++;
+        }
+
+        $this->assertEquals($i, 1);
+    }
     function testNamespace()
     {
         $this->assertFalse(ActiveMongo::setNamespace('bad namespace'));
@@ -63,13 +85,13 @@ class QueryTest extends PHPUnit_Framework_TestCase
     function testInstall()
     {
         ActiveMongo::install();
-        $index = Model1::getIndexes();
+        $index = Model1::instance()->getIndexes();
         $this->assertTrue(isset($index[1]['key']['b']));
         $this->assertTrue(isset($index[2]['key']['a']));
         $this->assertEquals($index[1]['key']['b'], 1);
         $this->assertEquals($index[2]['key']['a'], -1);
         $this->asserTEquals(count($index), 3);
-        $index = Model2::getIndexes();
+        $index = Model2::instance()->getIndexes();
         $this->assertTrue(isset($index[1]['key']['M1']));
         $this->assertEquals($index[1]['key']['M1'], 1);
         $this->asserTEquals(count($index), 2);
@@ -78,14 +100,14 @@ class QueryTest extends PHPUnit_Framework_TestCase
     /**
      *  @depends testBulkInserts
      */
-    function testReset()
+    function testClean()
     {
         $c = new Model3;
         $c->doQuery();
 
         $this->assertTrue(isset($c->int));
         $this->assertTrue(isset($c['int']));
-        $c->reset();
+        $c->clean();
         $this->assertFalse(isset($c->int));
         $this->assertFalse(isset($c['int']));
     }
@@ -158,13 +180,15 @@ class QueryTest extends PHPUnit_Framework_TestCase
                     'a' => 1,
                 ),
             ),
-            'fields' => array(
+            'fields' => (object)array(
                 'a' => 1,
                 'b' => 1,
                 '_id' => 1, /* from now on _id is included by default */
             )
         );
 
+        // this values are new (In new drivers)
+        unset($sQuery['dynamic']['started_iterating'], $sQuery['dynamic']['id']);
         $this->assertEquals($sQuery['dynamic'], $eQuery);
     }
 
@@ -219,13 +243,14 @@ class QueryTest extends PHPUnit_Framework_TestCase
                     'a' => 1,
                 ),
             ),
-            'fields' => array(
+            'fields' =>(object) array(
                 'a' => 1,
                 'b' => 1,
                 '_id' => 1,
             )
         );
 
+        unset($sQuery['dynamic']['started_iterating'], $sQuery['dynamic']['id']);
         $this->assertEquals($sQuery['dynamic'], $eQuery);
     }
 
@@ -307,7 +332,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
         );
         $c = new Model3;
         $c->where($query);
-        $c->update(array('newproperty' => $str));
+        $c->update(array('$set' => array('newproperty' => $str)));
 
         $c->where(array('int >' => 5, 'int <' => 30));
         foreach ($c as $item) {
@@ -358,7 +383,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
 
 
         /* now empty $c and query for `int` value */
-        $c->reset();
+        $c->clean();
         $c->where('_id', $id);
         $c->doQuery();
         $this->assertEquals($c->int, 0);
@@ -389,7 +414,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
         $c->a = 1;
         $c->save();
 
-        $c->reset();
+        $c->clean();
 
         /* object with no results can't be cloned */
         try {
@@ -415,7 +440,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
 
         /* cloned object can't be reused */
         try {
-            $item_cloned->reset();
+            $item_cloned->clean();
             $this->AssertTrue(FALSE);
         } catch (ActiveMongo_Exception $e) {
             $this->AssertTrue(TRUE);
@@ -457,7 +482,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
             $i++;
         }
 
-        $c->reset();
+        $c->clean();
 
         $this->assertEquals(2, $i);
         $this->assertEquals($c->count(), 4898);
@@ -467,12 +492,28 @@ class QueryTest extends PHPUnit_Framework_TestCase
     {
         $c = new Dummy;
         $c['foo'] = 'bar';
+        $c->mFoo  = 'fooooo';
+        $c->eFoo  = md5('foo');
         $c->save();
 
-        $this->assertFalse(ActiveMongo::drop());
-        $this->assertTrue(Dummy::drop());
         try {
-            $this->assertFalse(Dummy::drop());
+            $c->eFoo = 'bar';
+            $c->save();
+            $this->assertTrue(FALSE);
+        } catch (ActiveMongo_FilterException $e) {
+            $this->assertTrue(TRUE);
+        }
+
+        try {
+            ActiveMongo::instance()->drop();
+            $this->assertTrue(FALSE);
+        } catch (ActiveMongo_exception $e) {
+            $this->assertTrue(TRUE);
+        }
+
+        $this->assertTrue(Dummy::instance()->drop());
+        try {
+            $this->assertFalse(Dummy::instance()->drop());
         } catch (ActiveMongo_Exception $e) {
             $this->assertTrue(TRUE);
         }
@@ -504,14 +545,14 @@ class QueryTest extends PHPUnit_Framework_TestCase
         );
         try {
             /* Invalid call */
-            ActiveMongo::BatchInsert($documents);
+            ActiveMongo::instance()->BatchInsert($documents);
             $this->assertTrue(False);
         } catch (ActiveMongo_Exception $e) {
             $this->assertTrue(TRUE);
         }
 
         try {
-            Model2::BatchInsert($documents);
+            Model2::instance()->BatchInsert($documents);
             $this->assertTrue(False);
         } catch (ActiveMongo_FilterException $e) {
             $this->assertTrue(FALSE);
@@ -520,7 +561,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
         }
 
         try {
-            Model2::BatchInsert($documents, TRUE, FALSE);
+            Model2::instance()->BatchInsert($documents, TRUE, FALSE);
             $this->assertTrue(False);
         } catch (ActiveMongo_FilterException $e) {
             $this->assertTrue(TRUE);
@@ -576,7 +617,9 @@ class QueryTest extends PHPUnit_Framework_TestCase
         $d->save();
 
         $c = new Model1;
-        $c->find($d->getID());
+        $c->where('_id', $d->getID());
+        $c->doQuery();
+
         $this->assertEquals(1, $c->count());
         $this->assertEquals($c->a, $d->a);
     }
@@ -590,6 +633,14 @@ class QueryTest extends PHPUnit_Framework_TestCase
         $c->limit(50);
         $c->sort('int DESC');
         $c->findAndModify(array("processing" => TRUE));
+
+        try {
+            $c->count();
+            $this->assertTrue(FALSE);
+        } catch (ActiveMongo_Exception $e) {
+            $this->assertTrue(TRUE);
+        }
+
 
         $i    = 0;
         $last = 0; 
@@ -605,7 +656,7 @@ class QueryTest extends PHPUnit_Framework_TestCase
         $this->assertEquals($i, 50);
 
         try {
-            $c->reset();
+            $c->clean();
             $c->where('int <= ', 1000);
             $c->where('processing exists', FALSE);
             $c->limit(50);
@@ -616,34 +667,37 @@ class QueryTest extends PHPUnit_Framework_TestCase
         }
     }
 
+
+    /*
     function testFindVariations()
     {
       // add a few entries:
       $documents = array(
-        array('int' => '1', 'mod3' => '1'),
-        array('int' => '2', 'mod3' => '2'),
-        array('int' => '3', 'mod3' => '0'),
-        array('int' => '4', 'mod3' => '1'),
-        array('int' => '5', 'mod3' => '2'),
-        array('int' => '6', 'mod3' => '0'),
-        array('int' => '7', 'mod3' => '1'),
-        array('int' => '8', 'mod3' => '2'),
-        array('int' => '9', 'mod3' => '0'),
+        array('int' => 1, 'mod3' => '1'),
+        array('int' => 2, 'mod3' => '2'),
+        array('int' => 3, 'mod3' => '0'),
+        array('int' => 4, 'mod3' => '1'),
+        array('int' => 5, 'mod3' => '2'),
+        array('int' => 6, 'mod3' => '0'),
+        array('int' => 7, 'mod3' => '1'),
+        array('int' => 8, 'mod3' => '2'),
+        array('int' => 9, 'mod3' => '0'),
       );
-      Model3::BatchInsert($documents, TRUE, FALSE);
+      Model3::instance()->BatchInsert($documents, TRUE, FALSE);
 
       // test findCol (which also tests findPairs and fields)
       $c = new Model3;
-      $findCol = $c->findCol('mod3', array('int'=>array('$lt'=>'5')));
+      $findCol = $c->findCol('mod3', array('int'=>array('$lt'=>5)));
       $this->assertEquals(array_values($findCol), array('1', '2', '0', '1'));
 
       // test findOneValue (which will test findOne)
-      $this->assertEquals($c->findOneValue('mod3', array('int'=>'5')), '2');
+      $this->assertEquals($c->findOneValue('mod3', array('int'=> 5)), '2');
 
       // test findOneObj (which will test findOneAssoc)
-      $obj = $c->findOneObj(array('int'=>'5'));
-      $this->assertEquals($obj, (object)array('int'=>'5', 'mod3'=>'2', '_id'=>$obj->_id));
+      $obj = $c->findOneObj(array('int'=>5));
+      $this->assertEquals($obj, (object)array('int'=>5, 'mod3'=>2, '_id'=>$obj->_id));
     }
+    */
 
     function testDisconnect()
     {

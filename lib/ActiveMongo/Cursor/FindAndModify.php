@@ -35,20 +35,96 @@
   +---------------------------------------------------------------------------------+
 */
 
-namespace ActiveMongo;
+namespace ActiveMongo\Cursor;
 
-// Class FilterException {{{
-class Exception extends \Exception
+use \ActiveMongo\Exception;
+
+class ActiveMongo\Cursor\FindAndModify extends ActiveMongo\Cursor\Interface
 {
+    protected $query;
+    protected $collection;
+    protected $update;
+    protected $properties;
+    protected $result;
+    protected $has_result;
+    protected $is_valid;
+    protected $cnt;
+
+    public function __construct($collection, $query)
+    {
+        $this->collection = $collection;
+        $this->query      = $query; 
+        $this->cnt        = 0;
+    }
+
+    function setUpdate(Array $document)
+    {
+        if (count($document) === 0) {
+            throw new Exception("Empty \$document is not allowed");
+        }
+
+        if (substr(key($document), 0, 1) != '$') {
+            /* document to execute is not a command, so let's append
+               it as is */
+            $document = array('$set' => $document);
+        }
+
+        $this->update = $document;
+        $this->next();
+    }
+
+    public function next()
+    {
+        $this->is_valid = FALSE;
+
+        if (isset($this->query['limit']) && $this->cnt >= $this->query['limit']) {
+            return;
+        }
+
+        $command = array(
+            'findandmodify' => $this->collection->getName(),
+            'query'         => $this->query['query'],
+            'update'        => $this->update,
+            'new'           => TRUE,
+            'upsert'        => !empty($this->query['upsert']),
+        );
+
+        if (isset($this->query['sort'])) {
+            $command['sort'] = $this->query['sort'];
+        }
+
+        $this->result   = $this->collection->db->command($command);
+        $this->is_valid = $this->result['ok'] == 1;
+
+        $this->cnt++;
+    }
+
+    public function valid()
+    {
+        return $this->is_valid;
+    }
+
+    public function rewind()
+    {
+    }
+
+    public function reset()
+    {
+    }
+
+    public function current()
+    {
+        return $this->result['value'];
+    }
+
+    public function count()
+    {
+        throw new Exception("FindAndModify doesn't support count");
+    }
+
+    public function key()
+    {
+        return (string)$this->result['value']['_id'];
+    }
+
 }
-// }}}
-
-
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: sw=4 ts=4 fdm=marker
- * vim<600: sw=4 ts=4
- */

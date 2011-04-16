@@ -35,99 +35,107 @@
   +---------------------------------------------------------------------------------+
 */
 
-namespace ActiveMongo;
+namespace ActiveMongo\Cursor;
 
-/**
- *  Default validators
- *
- *
- */
-class Validators
+use \ActiveMongo\Exception;
+
+class ActiveMongo\Cursor\Native extends ActiveMongo\Cursor\Interface
 {
+    protected $cursor;
+    protected $current;
+    protected $collection;
 
-    final private static function _hook($action, $method)
+    function __construct($collection, $query=array())
     {
-        ActiveMongo::addEvent($action, array(__CLASS__, $method));
-    }
-
-    final public static function init() 
-    {
-        self::_hook("before_validate_creation", "presence_of_creation");
-        self::_hook("before_validate_update", "presence_of_update");
-        self::_hook("before_validate", "length_of");
-    }
-
-    // validates_length_of {{{
-    final static function length_of($class, $obj)
-    {
-        $validates = array();
-
-        if (isset_static_variable($class, 'validates_size_of')) {
-            $validates = get_static_variable($class, 'validates_size_of');
-        } else if (isset_static_variable($class, 'validates_length_of')) {
-            $validates = get_static_variables($class, 'validates_length_of');
+        if ($collection InstanceOf MongoCursor) {
+            $this->collection = null;
+            $this->cursor     = $collection;
+            return;
+        }
+        $this->collection = $collection;
+        
+        if (count($query['properties']) > 0) {
+            $cursor = $collection->find($query['query'], $query['properties']);
+        } else {
+            $cursor = $collection->find($query['query']);
         }
 
-        foreach ($validates as $property) {
-            $name = $property[0];
-
-            if (isset($obj[$name])) {
-                $prop = $obj[$name];
-            }
-
-            if (isset($obj['$set'][$name])) {
-                $prop = $obj['$set'][$name];
-            }
-
-            if (isset($prop)) {
-                if (isset($property['min']) && strlen($prop) < $property['min']) {
-                    throw new ActiveMongo_FilterException("{$name} length is too short");
-                }
-                if (isset($property['is']) && strlen($prop) != $property['is']) {
-                    throw new ActiveMongo_FilterException("{$name} length is different than expected");
-                }
-                if (isset($property['max']) && strlen($prop) > $property['max']) {
-                    throw new ActiveMongo_FilterException("{$name} length is too large");
-                }
-            }
+        if (count($query['sort']) > 0) {
+            $cursor->sort($query['sort']);
         }
-    }
-    // }}}
 
-    // validates_presence_of {{{
-    final static function presence_of_creation($class, $obj)
+        if ($query['limit'] > 0) {
+            $cursor->limit($query['limit']);
+        }
+        if ($query['skip'] > 0) {
+            $cursor->skip($query['skip']);
+        }
+
+        $this->cursor = $cursor;
+    }
+
+    function count()
     {
-        if (isset_static_variable($class, 'validates_presence_of')) {
-            foreach ((Array)get_static_variable($class, 'validates_presence_of') as $property) {
-                if (!isset($obj[$property])) {
-                    throw new ActiveMongo_FilterException("Missing required property {$property}"); 
-                }
-            }
-        }
+        return $this->cursor->count();
     }
 
-    final static function presence_of_update($class, $obj)
+    function reset()
     {
-        if (isset_static_variable($class, 'validates_presence_of')) {
-            foreach ((Array)get_static_variable($class,'validates_presence_of') as $property) {
-                if (isset($obj['$unset'][$property])) {
-                    throw new ActiveMongo_FilterException("Cannot delete required property {$property}"); 
-                }
-            }
-        }
+        $this->cursor->getNext();
+        $this->cursor->rewind();
     }
-    // }}}
+
+    function key()
+    {
+        return $this->cursor->key();
+    }
+
+    function valid()
+    {
+        return $this->cursor->valid();
+    }
+
+    function next()
+    {
+        return $this->cursor->next();
+    }
+
+    function current()
+    {
+        return ($this->current = $this->cursor->current());
+    }
+
+    function rewind()
+    {
+        return $this->cursor->rewind();
+    }
+
+    function getReference($class)
+    {
+        if (empty($this->collection)) {
+            throw new Exception("Can't have references");
+        }
+
+        $ref =  array(
+            '$ref'  => $this->collection->getName(),
+            '$id'   => $this->current['_id'],
+            '$db'   => (string)$this->collection->db,
+            'class' => $class
+        );
+
+        $cursor = $this->cursor;
+        if (!is_callable(array($cursor, "Info"))) {
+            throw new Exception("Please upgrade your PECL/Mongo module to use this feature");
+        }
+
+        $ref['dynamic'] = array();
+        $query  = $cursor->Info();
+
+        foreach ($query as $type => $value) {
+            $ref['dynamic'][$type] = $value;
+        }
+
+        return $ref;
+    }
 
 }
-
-// Register validators
-Validators::init();
-
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: sw=4 ts=4 fdm=marker
- * vim<600: sw=4 ts=4
- */

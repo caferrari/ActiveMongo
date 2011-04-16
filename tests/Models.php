@@ -1,7 +1,13 @@
 <?php
 
+
 class Dummy extends ActiveMongo
 {
+    static $validates_size_of = array(
+        array('mFoo', 'min' => 5, 'max' => 10),
+        array('eFoo', 'is' => 32)
+    );
+
 }
 
 class Model1 extends ActiveMongo
@@ -53,9 +59,9 @@ class Model2 extends ActiveMongo
     function update_refs($m1)
     {
         /* reset just in case */
-        $this->reset();
+        $this->clean();
         $this->where('M1', $m1['_id']);
-        $this->Update(array('a' => $m1['a']));
+        $this->Update(array('$set' => array('a' => $m1['a'])));
     }
 
 }

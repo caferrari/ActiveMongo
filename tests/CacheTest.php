@@ -1,6 +1,6 @@
 <?php
 
-require "../lib/plugin/Cache/Cache.php";
+require "../lib/ActiveMongo/Plugin/Cache/Cache.php";
     
 
 class CacheableModel extends ActiveMongo
@@ -57,7 +57,7 @@ class CacheTest extends PHPUnit_Framework_TestCase
     function testInit()
     {
         try { 
-            CacheableModel::drop();
+            CacheableModel::instance()->drop();
         } Catch (ActiveMongo_Exception $e) {
         }
         ActiveMongo_Cache::setDriver(new CacheDriverMem);
@@ -82,7 +82,7 @@ class CacheTest extends PHPUnit_Framework_TestCase
         $c->prop = 'bar';
         $c->save();
         $id = $c->getID();
-        $c->reset();
+        $c->clean();
 
         $c->where('_id', $id);
         $c->doQuery();
@@ -96,8 +96,8 @@ class CacheTest extends PHPUnit_Framework_TestCase
         $d->where('_id', $id);
         $d->doQuery();
 
-        $this->assertFalse(ActiveMongo::isConnected());
         $this->assertTrue($d->servedFromCache());
+        $this->assertFalse(ActiveMongo::isConnected());
         $this->assertEquals($c->prop, $d->prop);
 
         /* non-cached query, to see if it is reconnected to mongodb */
@@ -114,9 +114,9 @@ class CacheTest extends PHPUnit_Framework_TestCase
     function testCacheMultiple()
     {
         $var = array('bar','foo','xxx','ccc');
-        $c = new CacheableModel;
+        $c = CacheableModel::instance();
         foreach ($var as $v) {
-            $c->reset();
+            $c->clean();
             $c->var['var_name'] = $v;
             $c->$v = TRUE;
             $c->save();
@@ -133,7 +133,8 @@ class CacheTest extends PHPUnit_Framework_TestCase
             }
         }
 
-        $query->reset();
+        $query->clean();
+
         $query->where('var.var_name IN', $var);
         $query->doQuery();
         $this->assertTrue($query->servedFromCache());
@@ -229,7 +230,7 @@ class CacheTest extends PHPUnit_Framework_TestCase
 
     function testDrivers()
     {
-        $drivers = glob("../lib/plugin/Cache/*.php");
+        $drivers = glob("../lib/ActiveMongo/Plugin/Cache/*.php");
         foreach ($drivers as $drive) {
             if (substr($drive,-9) == 'Cache.php') {
                 continue;
@@ -239,7 +240,7 @@ class CacheTest extends PHPUnit_Framework_TestCase
                 continue;
             }
             ActiveMongo_Cache::flushCache();
-            CacheableModel::drop();
+            CacheableModel::instance()->drop();
             $id   = $this->testCacheSimple();
             $vars = $this->testCacheMultiple();
             $this->testUpdateCache($id);
