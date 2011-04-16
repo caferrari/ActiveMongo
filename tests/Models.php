@@ -1,5 +1,6 @@
 <?php
 
+namespace ActiveMongo;
 
 class Dummy extends ActiveMongo
 {

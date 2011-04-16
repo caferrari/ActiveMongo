@@ -1,5 +1,8 @@
 <?php
-require "../lib/ActiveMongo.php";
+
+namespace ActiveMongo;
+
+require "../lib/ActiveMongo/ActiveMongo.php";
 require "Models.php";
 require "ReferencesTest.php";
 require "ValidatorsTest.php";

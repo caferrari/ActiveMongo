@@ -1,5 +1,7 @@
 <?php
 
+namespace ActiveMongo;
+
 require "../lib/ActiveMongo/Plugin/Cache/Cache.php";
     
 
